@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TearAway Demo</title>
+    <link rel="stylesheet" href="../content/tearaway.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #09090b;
+        color: #fafafa;
+      }
+      header {
+        padding: 24px 32px;
+        border-bottom: 1px solid #27272a;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .hint {
+        font-size: 13px;
+        color: #a78bfa;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        padding: 24px 32px;
+        max-width: 1100px;
+      }
+      .card {
+        background: #18181b;
+        border: 1px solid #3f3f46;
+        border-radius: 14px;
+        padding: 20px;
+      }
+      .card h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .live-clock {
+        font-size: 42px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #c4b5fd;
+      }
+      .ticker {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .pill {
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #27272a;
+        font-size: 13px;
+      }
+      .pill.up {
+        color: #4ade80;
+      }
+      .pill.down {
+        color: #f87171;
+      }
+      video {
+        width: 100%;
+        border-radius: 10px;
+        background: #000;
+      }
+      ul.tasks {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      ul.tasks li {
+        padding: 8px 0;
+        border-bottom: 1px solid #27272a;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      input[type="checkbox"] {
+        accent-color: #7c3aed;
+      }
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>TearAway Demo</h1>
+        <p class="hint">Hold <strong>Alt</strong> → hover → click or drag any card off-screen</p>
+      </div>
+      <div class="live-clock" id="clock">--:--:--</div>
+    </header>
+
+    <main>
+      <article class="card" id="widget-stocks">
+        <h2>Live ticker (tear this)</h2>
+        <div class="ticker" id="ticker"></div>
+      </article>
+
+      <article class="card" id="widget-tasks">
+        <h2>Task list</h2>
+        <ul class="tasks">
+          <li><input type="checkbox" checked /> Ship TearAway v0.2</li>
+          <li><input type="checkbox" /> TabOS session sync</li>
+          <li><input type="checkbox" /> Knot research graph</li>
+        </ul>
+      </article>
+
+      <article class="card" id="widget-video" style="grid-column: span 2">
+        <h2>Video panel</h2>
+        <video controls poster="" id="demo-video">
+          <source
+            src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+            type="video/mp4"
+          />
+        </video>
+      </article>
+    </main>
+
+    <script src="demo.js"></script>
+    <script src="../content/tearaway2.js"></script>
+  </body>
+</html>

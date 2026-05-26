@@ -1,0 +1,9 @@
+{
+  "name": "tearaway",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Hold Alt, tear live DOM elements into always-on-top widgets",
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs"
+  }
+}
