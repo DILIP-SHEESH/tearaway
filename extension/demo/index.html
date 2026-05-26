@@ -3,128 +3,288 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TearAway Demo</title>
+    <title>TearAway — Demo</title>
     <link rel="stylesheet" href="../content/tearaway.css" />
     <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
       :root {
-        color-scheme: dark;
-        font-family: system-ui, sans-serif;
+        --bg: #f9fafb;
+        --surface: #ffffff;
+        --border: #e5e7eb;
+        --text: #111827;
+        --text-muted: #6b7280;
+        --accent: #7c3aed;
+        --accent-light: #f5f3ff;
+        --green: #059669;
+        --red: #dc2626;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
       }
+
       body {
         margin: 0;
         min-height: 100vh;
-        background: #09090b;
-        color: #fafafa;
+        background: var(--bg);
+        color: var(--text);
       }
+
+      /* ── Header ── */
       header {
-        padding: 24px 32px;
-        border-bottom: 1px solid #27272a;
+        padding: 18px 32px;
+        background: var(--surface);
+        border-bottom: 1.5px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 16px;
       }
-      h1 {
-        margin: 0;
-        font-size: 22px;
+
+      .header-left { display: flex; align-items: center; gap: 14px; }
+
+      .header-logo {
+        width: 36px; height: 36px;
+        background: var(--accent);
+        border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 17px; color: #fff;
+        box-shadow: 0 2px 10px rgba(124,58,237,0.28);
       }
-      .hint {
-        font-size: 13px;
-        color: #a78bfa;
+
+      .header-title { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+      .header-sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+      .header-hint {
+        font-size: 12px;
+        background: var(--accent-light);
+        color: var(--accent);
+        padding: 7px 14px;
+        border-radius: 9px;
+        font-weight: 600;
+        border: 1px solid rgba(124,58,237,0.15);
       }
+
+      .header-hint kbd {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: rgba(124,58,237,0.12);
+        border: 1px solid rgba(124,58,237,0.2);
+        font-size: 11px;
+        font-family: inherit;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      /* ── Live clock (header right) ── */
+      .live-clock {
+        font-size: 28px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+        letter-spacing: -0.02em;
+      }
+
+      /* ── Main grid ── */
       main {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 20px;
+        gap: 18px;
         padding: 24px 32px;
         max-width: 1100px;
       }
+
+      /* ── Cards ── */
       .card {
-        background: #18181b;
-        border: 1px solid #3f3f46;
+        background: var(--surface);
+        border: 1.5px solid var(--border);
         border-radius: 14px;
         padding: 20px;
+        transition: box-shadow 0.2s;
       }
-      .card h2 {
-        margin: 0 0 8px;
-        font-size: 16px;
+
+      .card:hover {
+        box-shadow: 0 4px 24px rgba(0,0,0,0.07);
       }
-      .live-clock {
-        font-size: 42px;
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .card-title {
+        font-size: 13px;
         font-weight: 700;
-        font-variant-numeric: tabular-nums;
-        color: #c4b5fd;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 7px;
       }
+
+      .card-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 99px;
+        background: var(--accent-light);
+        color: var(--accent);
+        border: 1px solid rgba(124,58,237,0.15);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      /* ── Ticker ── */
       .ticker {
         display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
+        flex-direction: column;
+        gap: 8px;
       }
-      .pill {
-        padding: 6px 12px;
-        border-radius: 999px;
-        background: #27272a;
+
+      .ticker-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #fafafa;
+        border: 1px solid var(--border);
         font-size: 13px;
+        transition: background 0.2s;
       }
-      .pill.up {
-        color: #4ade80;
+
+      .ticker-sym { font-weight: 700; color: var(--text); }
+      .ticker-price { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+      .ticker-delta { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .ticker-delta.up  { color: var(--green); }
+      .ticker-delta.down { color: var(--red); }
+
+      /* ── Tasks ── */
+      .tasks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+
+      .tasks li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: var(--text);
+        border: 1px solid transparent;
+        transition: background 0.15s;
       }
-      .pill.down {
-        color: #f87171;
+
+      .tasks li:hover { background: #fafafa; border-color: var(--border); }
+      .tasks li.done { color: var(--text-muted); text-decoration: line-decoration; }
+
+      input[type="checkbox"] {
+        width: 15px; height: 15px;
+        accent-color: var(--accent);
+        flex-shrink: 0;
+        cursor: pointer;
       }
+
+      /* ── Metrics ── */
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .metric {
+        background: #fafafa;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+
+      .metric-label { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .metric-value { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); }
+      .metric-delta { font-size: 11px; font-weight: 600; margin-top: 2px; }
+      .metric-delta.up  { color: var(--green); }
+      .metric-delta.down { color: var(--red); }
+
+      /* ── Video ── */
       video {
         width: 100%;
         border-radius: 10px;
         background: #000;
+        display: block;
       }
-      ul.tasks {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      ul.tasks li {
-        padding: 8px 0;
-        border-bottom: 1px solid #27272a;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      input[type="checkbox"] {
-        accent-color: #7c3aed;
-      }
-      @media (max-width: 800px) {
-        main {
-          grid-template-columns: 1fr;
-        }
+
+      /* ── Responsive ── */
+      @media (max-width: 760px) {
+        main { grid-template-columns: 1fr; }
+        .card.span2 { grid-column: span 1; }
       }
     </style>
   </head>
   <body>
     <header>
-      <div>
-        <h1>TearAway Demo</h1>
-        <p class="hint">Hold <strong>Alt</strong> → hover → click or drag any card off-screen</p>
+      <div class="header-left">
+        <div class="header-logo">✂</div>
+        <div>
+          <div class="header-title">TearAway Demo</div>
+          <div class="header-sub">Hold Alt and click any card to tear it away</div>
+        </div>
       </div>
+      <div class="header-hint"><kbd>Alt</kbd> + hover → click or drag off-edge</div>
       <div class="live-clock" id="clock">--:--:--</div>
     </header>
 
     <main>
+      <!-- Stock Ticker -->
       <article class="card" id="widget-stocks">
-        <h2>Live ticker (tear this)</h2>
+        <div class="card-header">
+          <span class="card-title">
+            📈 Live Ticker
+          </span>
+          <span class="card-badge">Tear this</span>
+        </div>
         <div class="ticker" id="ticker"></div>
       </article>
 
+      <!-- Task List -->
       <article class="card" id="widget-tasks">
-        <h2>Task list</h2>
-        <ul class="tasks">
-          <li><input type="checkbox" checked /> Ship TearAway v0.2</li>
+        <div class="card-header">
+          <span class="card-title">✅ Task list</span>
+          <span class="card-badge">Tear this</span>
+        </div>
+        <ul class="tasks" id="tasks">
+          <li><input type="checkbox" checked /> Ship TearAway v1.0</li>
+          <li><input type="checkbox" /> Fix PNG download</li>
+          <li><input type="checkbox" /> Add CSS inspector</li>
           <li><input type="checkbox" /> TabOS session sync</li>
-          <li><input type="checkbox" /> Knot research graph</li>
+          <li><input type="checkbox" /> Firefox shim</li>
         </ul>
       </article>
 
-      <article class="card" id="widget-video" style="grid-column: span 2">
-        <h2>Video panel</h2>
-        <video controls poster="" id="demo-video">
+      <!-- Metrics -->
+      <article class="card" id="widget-metrics">
+        <div class="card-header">
+          <span class="card-title">📊 Metrics</span>
+          <span class="card-badge">Tear this</span>
+        </div>
+        <div class="metrics" id="metrics"></div>
+      </article>
+
+      <!-- Clock card (demonstrates live tearaway) -->
+      <article class="card" id="widget-clock">
+        <div class="card-header">
+          <span class="card-title">🕐 Live Clock</span>
+          <span class="card-badge">Tear this</span>
+        </div>
+        <div id="big-clock" style="font-size:48px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent);letter-spacing:-0.03em;text-align:center;padding:10px 0">--:--:--</div>
+        <div id="big-date" style="text-align:center;font-size:13px;color:var(--text-muted);margin-top:4px"></div>
+      </article>
+
+      <!-- Video (full width) -->
+      <article class="card span2" id="widget-video" style="grid-column:span 2">
+        <div class="card-header">
+          <span class="card-title">🎬 Video panel</span>
+          <span class="card-badge">Tear this</span>
+        </div>
+        <video controls id="demo-video">
           <source
             src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
             type="video/mp4"

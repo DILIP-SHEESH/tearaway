@@ -1,43 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TearAway</title>
-    <link rel="stylesheet" href="popup.css" />
-  </head>
-  <body>
-    <header>
-      <div class="logo">✂</div>
-      <div>
-        <h1>TearAway</h1>
-        <p class="tagline">Live widgets from any page</p>
-      </div>
-    </header>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+  <title>TearAway</title>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="3" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
+        <path d="M14 3h7v7h-2.5V6.2L12.3 12.4l-1.7-1.7 6.2-6.2H14V3z" fill="currentColor"/>
+        <path d="M3 14h7v7H3v-7z" rx="1" fill="currentColor" opacity="0.25"/>
+        <path d="M14 14h7v7h-7v-7z" rx="1" fill="currentColor" opacity="0.15"/>
+      </svg>
+      TearAway
+    </div>
+    <span class="badge">v1.0</span>
+  </div>
 
-    <section class="steps">
-      <div class="step">
-        <span class="num">1</span>
-        <p>Go to any website</p>
-      </div>
-      <div class="step">
-        <span class="num">2</span>
-        <p>Hold <kbd>Alt</kbd> — purple highlight follows your cursor</p>
-      </div>
-      <div class="step">
-        <span class="num">3</span>
-        <p><strong>Click</strong> an element, or <strong>drag</strong> it off the screen edge</p>
-      </div>
-    </section>
+  <div class="divider"></div>
 
-    <section class="note">
-      Uses <strong>Document Picture-in-Picture</strong> (Chrome 116+) for a real
-      always-on-top window that stays <em>live</em> with the page.
-    </section>
+  <div class="shortcuts">
+    <div class="shortcut-row">
+      <div class="keys"><kbd>Alt</kbd></div>
+      <span class="shortcut-desc">enter pick mode</span>
+    </div>
+    <div class="shortcut-row">
+      <div class="keys"><kbd>Alt</kbd><span class="keys-plus">+</span><kbd>⇧</kbd></div>
+      <span class="shortcut-desc">safe clone mode</span>
+    </div>
+    <div class="shortcut-row">
+      <div class="keys"><kbd>Esc</kbd></div>
+      <span class="shortcut-desc">restore last torn</span>
+    </div>
+    <div class="shortcut-row">
+      <div class="keys"><kbd>⇧</kbd><span class="keys-plus">+</span><kbd>Esc</kbd></div>
+      <span class="shortcut-desc">restore all</span>
+    </div>
+  </div>
 
-    <footer>
-      <a href="#" id="open-demo">Open demo page</a>
-    </footer>
-    <script src="popup.js"></script>
-  </body>
+  <div class="divider"></div>
+
+  <div class="actions">
+    <button id="btn-activate" class="btn btn-primary">
+      <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+        <path d="M4 4h5v2H6v8h8v-3h2v5H4V4z" fill="currentColor" opacity=".6"/>
+        <path d="M11 4h5v5h-2V6.4l-5.3 5.3-1.4-1.4L12.6 5H11V3z" fill="currentColor"/>
+      </svg>
+      Activate on this tab
+    </button>
+    <div class="btn-row">
+      <button id="btn-restore" class="btn btn-ghost">Restore last</button>
+      <button id="btn-restore-all" class="btn btn-ghost btn-warn">Restore all</button>
+    </div>
+  </div>
+
+  <div class="status-wrap">
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="footer">
+    <a href="https://github.com/DILIP-SHEESH/tearaway" target="_blank" class="footer-link">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+      </svg>
+      GitHub
+    </a>
+    <span class="footer-sep">·</span>
+    <a href="#" id="link-demo" class="footer-link">Demo page</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
 </html>

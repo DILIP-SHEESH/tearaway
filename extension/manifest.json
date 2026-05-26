@@ -1,16 +1,41 @@
 {
   "manifest_version": 3,
   "name": "TearAway",
-  "version": "0.2.0",
-  "description": "Hold Alt, tear any live element off the page into a floating always-on-top widget.",
-  "permissions": ["storage", "activeTab", "tabs"],
-  "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "TearAway"
-  },
+  "version": "1.0.0",
+  "description": "Tear live UI out of any webpage into a floating widget.",
+
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "clipboardWrite",
+    "clipboardRead"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
   "background": {
     "service_worker": "background.js"
   },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "TearAway — hold Alt to pick"
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -20,14 +45,10 @@
       "all_frames": false
     }
   ],
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  },
+
   "web_accessible_resources": [
     {
-      "resources": ["demo/index.html"],
+      "resources": ["lib/*", "content/*"],
       "matches": ["<all_urls>"]
     }
   ]
