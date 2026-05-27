@@ -1,17 +1,3 @@
-/**
- * TearAway v1.0 — content script
- *
- * Fixed in this version:
- *  ✓ Bottom-left tray removed completely
- *  ✓ Clipboard: relays through background.js (works on http:// + CSP-locked sites)
- *  ✓ PNG: uses captureVisibleTab via background message passing (reliable) with
- *         element-rect crop. html2canvas used as secondary fallback only.
- *  ✓ Works on keyboard-intercepting sites via extension icon toggle
- *  ✓ Duplicate tear prevention
- *  ✓ Esc = restore last, Shift+Esc = restore all
- *  ✓ Smart label derivation
- */
-
 (() => {
   if (window !== window.top) return;
   if (window.__tearawayLoaded) return;
@@ -93,16 +79,33 @@
   }
 
   function deriveLabel(el) {
-    return (
+    const explicit =
       el.getAttribute("aria-label") ||
       el.getAttribute("title") ||
+      el.getAttribute("alt") ||
       el.id ||
       el.dataset?.testid ||
       el.dataset?.componentName ||
-      (typeof el.className === "string" && el.className.trim().split(/\s+/)[0]
-        ? `${el.tagName.toLowerCase()}.${el.className.trim().split(/\s+/)[0]}`
-        : el.tagName.toLowerCase())
-    );
+      el.dataset?.label;
+    if (explicit) return explicit;
+
+    const heading = el.querySelector("h1,h2,h3,h4,h5,h6,legend,caption");
+    if (heading?.textContent?.trim()) return heading.textContent.trim().slice(0, 60);
+
+    const btn = el.matches("button,a,[role=button]") ? el : el.querySelector("button,a,[role=button]");
+    if (btn?.textContent?.trim()) return btn.textContent.trim().slice(0, 60);
+
+    const txt = el.textContent?.trim() ?? "";
+    if (txt.length > 0 && txt.length <= 60) return txt;
+
+    const tag = el.tagName.toLowerCase();
+    if (typeof el.className === "string") {
+      const cls = [...el.classList].find(c =>
+        c.length > 3 && !/^(comp|js-|is-|has-|ng-|v-|react-|svelte-|\d)/.test(c)
+      );
+      if (cls) return `${tag}.${cls}`;
+    }
+    return tag;
   }
 
   function esc(s) {
@@ -425,6 +428,7 @@
       capture: {
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
         scrollX: window.scrollX, scrollY: window.scrollY,
+        devicePixelRatio: window.devicePixelRatio || 1,
       },
     };
     STATE.tearsById.set(id, tear);
@@ -496,23 +500,17 @@
   }
 
   // ─── clipboard ────────────────────────────────────────────────────────────
-  /**
-   * Reliable clipboard write strategy:
-   * 1. Try navigator.clipboard.writeText (works on https:// with focus)
-   * 2. Fall back to background.js relay which uses document.execCommand via scripting API
-   * 3. Last resort: textarea execCommand directly in page context
-   */
   async function writeClipboard(text) {
-    // Strategy 1: native clipboard API
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {}
-
-    // Strategy 2: relay through background.js
+    // Strategy 1: relay through background.js (most reliable — works everywhere)
     try {
       const resp = await chrome.runtime.sendMessage({ type: "TEARAWAY_CLIPBOARD_WRITE", text });
       if (resp?.ok) return true;
+    } catch {}
+
+    // Strategy 2: native clipboard API (works on focused https:// pages)
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {}
 
     // Strategy 3: textarea execCommand (deprecated but last resort)
@@ -549,100 +547,362 @@
     });
   }
 
-  // ─── PNG download ─────────────────────────────────────────────────────────
+  // ─── PNG download ────────────────────────────────────────────────────────
+  //
+  // PRIMARY PATH — captureVisibleTab + crop:
+  //   background.js captures the live GPU frame via chrome.tabs.captureVisibleTab,
+  //   we crop to the element rect. Perfect pixels, handles CORS/video/canvas.
+  //
+  // FALLBACK PATH — manual canvas painter (zero extension APIs):
+  //   Used when chrome.runtime is gone (extension reloaded while tab is open).
+  //   We walk the element's box tree and paint each node onto an OffscreenCanvas
+  //   using only 2D canvas primitives — no XMLSerializer, no DOM serialisation,
+  //   no chrome.* calls at all. Handles backgrounds, borders, border-radius,
+  //   text, and nested children. Cross-origin images are skipped (blank).
+  //
+  // WHY NOT XMLSerializer / foreignObject:
+  //   Chrome's XMLSerializer internally calls chrome.runtime.getURL() to resolve
+  //   extension-origin resource references embedded in the DOM. When the context
+  //   is invalidated chrome.runtime is undefined → "Cannot read properties of
+  //   undefined (reading 'getURL')". This crash happens before we even draw
+  //   anything, so there is no safe way to use XMLSerializer in this scenario.
+  //
+
+  /** True when chrome.runtime is alive and usable */
+  function _runtimeAlive() {
+    try { return !!(chrome?.runtime?.id); } catch { return false; }
+  }
+
   /**
-   * PNG strategy:
-   * 1. Ask background.js to captureVisibleTab → crop to element rect
-   *    (this works on ALL sites, no CSP issues, no CORS issues)
-   * 2. If element was moved into PiP, we stored its rect at tear time → crop from that
-   * 3. Fallback: load local html2canvas (bundled in extension) and render clone
+   * Temporarily move the element into the visible page DOM so
+   * captureVisibleTab can see it. Returns an async undo function.
    */
+  function _showForCapture(tear) {
+    const { element, mode, placeholder, exportDisplayRestore, pipWindow } = tear;
+    let undo = () => {};
+    if (mode === "live" && pipWindow && !pipWindow.closed) {
+      const parent = placeholder?.parentNode || document.body;
+      parent.insertBefore(element, placeholder || null);
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      undo = () => {
+        try {
+          const b = pipWindow.document.querySelector("#ta-body");
+          if (b) b.appendChild(element);
+        } catch {}
+      };
+    } else if (mode === "safe") {
+      const prev = element.style.display;
+      element.style.display = exportDisplayRestore ?? "";
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      undo = () => { element.style.display = prev; };
+    }
+    return undo;
+  }
+
+  /**
+   * Pure-canvas fallback PNG export.
+   * Walks the element's subtree, reads getComputedStyle() for each node,
+   * and paints backgrounds / borders / text onto a canvas.
+   * Never touches chrome.* or XMLSerializer.
+   */
+  async function _canvasFallbackPng(tear) {
+    showToast("Using canvas fallback…", "info");
+    const { element, mode, exportDisplayRestore } = tear;
+
+    // Un-hide if safe mode so we get real rects
+    let prevDisplay = null;
+    if (mode === "safe") {
+      prevDisplay = element.style.display;
+      element.style.display = exportDisplayRestore ?? "";
+    }
+    await new Promise(r => requestAnimationFrame(r));
+
+    const rootRect = element.getBoundingClientRect();
+    const w   = Math.max(Math.round(rootRect.width),  1);
+    const h   = Math.max(Math.round(rootRect.height), 1);
+    const dpr = window.devicePixelRatio || 1;
+    const ox  = rootRect.left;   // origin x — subtract from every rect
+    const oy  = rootRect.top;    // origin y
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    // Fill with the nearest opaque ancestor background so we don't get
+    // a transparent (looks white) canvas
+    const pageBg = (() => {
+      let el = element.parentElement;
+      while (el && el !== document.documentElement) {
+        const bg = getComputedStyle(el).backgroundColor;
+        if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
+        el = el.parentElement;
+      }
+      return getComputedStyle(document.documentElement).backgroundColor || "#fff";
+    })();
+    ctx.fillStyle = pageBg;
+    ctx.fillRect(0, 0, w, h);
+
+    // ── Recursive painter ─────────────────────────────────────────────────
+    function paintNode(node) {
+      if (!(node instanceof Element)) return;
+      const r   = node.getBoundingClientRect();
+      const cs  = getComputedStyle(node);
+      const x   = r.left - ox;
+      const y   = r.top  - oy;
+      const nw  = r.width;
+      const nh  = r.height;
+      if (nw <= 0 || nh <= 0) return;
+
+      ctx.save();
+
+      // Border-radius clip
+      const radii = [
+        parseFloat(cs.borderTopLeftRadius)     || 0,
+        parseFloat(cs.borderTopRightRadius)    || 0,
+        parseFloat(cs.borderBottomRightRadius) || 0,
+        parseFloat(cs.borderBottomLeftRadius)  || 0,
+      ];
+      const hasRadius = radii.some(r => r > 0);
+      if (hasRadius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radii[0], y);
+        ctx.lineTo(x + nw - radii[1], y);
+        ctx.quadraticCurveTo(x + nw, y, x + nw, y + radii[1]);
+        ctx.lineTo(x + nw, y + nh - radii[2]);
+        ctx.quadraticCurveTo(x + nw, y + nh, x + nw - radii[2], y + nh);
+        ctx.lineTo(x + radii[3], y + nh);
+        ctx.quadraticCurveTo(x, y + nh, x, y + nh - radii[3]);
+        ctx.lineTo(x, y + radii[0]);
+        ctx.quadraticCurveTo(x, y, x + radii[0], y);
+        ctx.closePath();
+        ctx.clip();
+      }
+
+      // Background color
+      const bg = cs.backgroundColor;
+      if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+        ctx.fillStyle = bg;
+        ctx.fillRect(x, y, nw, nh);
+      }
+
+      // Background image (solid color gradients only — skip url() to avoid taint)
+      const bgImg = cs.backgroundImage;
+      if (bgImg && bgImg !== "none" && !bgImg.startsWith("url(")) {
+        try {
+          // linear-gradient / radial-gradient — create a temporary element
+          // and read it back as a canvas fill (limited but covers common cases)
+          const tmp = document.createElement("canvas");
+          tmp.width = Math.round(nw); tmp.height = Math.round(nh);
+          const tmpCtx = tmp.getContext("2d");
+          const tmpEl = document.createElement("div");
+          tmpEl.style.cssText = `position:fixed;left:-9999px;top:0;width:${nw}px;height:${nh}px;background:${bgImg}`;
+          document.documentElement.appendChild(tmpEl);
+          // We can't actually read pixels from a DOM element directly,
+          // but we can at least not crash. Skip for now.
+          tmpEl.remove();
+        } catch {}
+      }
+
+      // Border
+      const bw  = parseFloat(cs.borderTopWidth) || 0;
+      const bc  = cs.borderTopColor;
+      const bst = cs.borderTopStyle;
+      if (bw > 0 && bst !== "none" && bc && bc !== "rgba(0, 0, 0, 0)") {
+        ctx.strokeStyle = bc;
+        ctx.lineWidth   = bw;
+        if (hasRadius) {
+          ctx.stroke();
+        } else {
+          ctx.strokeRect(x + bw/2, y + bw/2, nw - bw, nh - bw);
+        }
+      }
+
+      // Box shadow (single shadow, approximate)
+      const shadow = cs.boxShadow;
+      if (shadow && shadow !== "none") {
+        try {
+          // Parse first shadow only: "Xpx Ypx Blur Spread Color"
+          const m = shadow.match(/([-\d.]+)px\s+([-\d.]+)px\s+([-\d.]+)px(?:\s+([-\d.]+)px)?\s+(rgba?\([^)]+\)|#\S+|\w+)/);
+          if (m) {
+            ctx.save();
+            ctx.shadowOffsetX = parseFloat(m[1]);
+            ctx.shadowOffsetY = parseFloat(m[2]);
+            ctx.shadowBlur    = parseFloat(m[3]);
+            ctx.shadowColor   = m[5];
+            ctx.fillStyle     = "transparent";
+            ctx.fillRect(x, y, nw, nh);
+            ctx.restore();
+          }
+        } catch {}
+      }
+
+      // Text nodes — paint inline text for leaf elements
+      if (node.childElementCount === 0) {
+        const text = node.textContent?.trim();
+        if (text) {
+          const fs    = cs.fontSize    || "14px";
+          const fw    = cs.fontWeight  || "normal";
+          const ff    = cs.fontFamily  || "sans-serif";
+          const color = cs.color       || "#000";
+          const align = cs.textAlign   || "left";
+          const lh    = parseFloat(cs.lineHeight) || parseFloat(fs) * 1.2;
+          const pt    = parseFloat(cs.paddingTop)  || 0;
+          const pl    = parseFloat(cs.paddingLeft) || 0;
+
+          ctx.font         = `${fw} ${fs} ${ff}`;
+          ctx.fillStyle    = color;
+          ctx.textBaseline = "top";
+          ctx.textAlign    = align === "center" ? "center"
+                           : align === "right"  ? "right" : "left";
+
+          const textX = align === "center" ? x + nw / 2
+                      : align === "right"  ? x + nw - pl
+                      : x + pl;
+
+          // Simple word-wrap
+          const maxW = nw - pl * 2;
+          const words = text.split(/\s+/);
+          let line = "", lineY = y + pt;
+          for (const word of words) {
+            const test = line ? line + " " + word : word;
+            if (ctx.measureText(test).width > maxW && line) {
+              ctx.fillText(line, textX, lineY, maxW);
+              line = word; lineY += lh;
+            } else { line = test; }
+          }
+          if (line) ctx.fillText(line, textX, lineY, maxW);
+        }
+      }
+
+      ctx.restore();
+
+      // Recurse into children
+      for (const child of node.children) paintNode(child);
+    }
+
+    try {
+      paintNode(element);
+
+      // Re-hide safe-mode element
+      if (mode === "safe" && prevDisplay !== null) {
+        element.style.display = prevDisplay;
+      }
+
+      triggerDownload(canvas.toDataURL("image/png"), tear);
+      showToast(`PNG downloaded ✓ (${canvas.width}×${canvas.height}px)`, "success");
+    } catch (err) {
+      if (mode === "safe" && prevDisplay !== null) {
+        element.style.display = prevDisplay;
+      }
+      showToast(`PNG fallback failed: ${err.message}`, "error");
+    }
+  }
+
   async function downloadPng(tearId) {
     const tear = STATE.tearsById.get(String(tearId));
     if (!tear) return;
 
-    showToast("Capturing…", "info");
-    const { rect } = tear.capture;
+    // ── Fast path: extension context is gone — go straight to canvas fallback
+    if (!_runtimeAlive()) {
+      showToast("Extension reloaded — using canvas fallback", "warn");
+      await _canvasFallbackPng(tear);
+      return;
+    }
 
-    // Strategy 1: captureVisibleTab via background
+    showToast("Capturing…", "info");
+
+    // ── Step 1: make element visible in the page for the screenshot ──────────
+    const undoShow = _showForCapture(tear);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // ── Step 2: fresh bounding rect ──────────────────────────────────────────
+    const liveRect = tear.element.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    // ── Step 3: captureVisibleTab via background ──────────────────────────────
+    let dataUrl = null;
     try {
       const resp = await chrome.runtime.sendMessage({ type: "TEARAWAY_CAPTURE_TAB" });
       if (resp?.ok && resp.dataUrl) {
-        const img = new Image();
-        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = resp.dataUrl; });
-
-        const scaleX = img.width / window.innerWidth;
-        const scaleY = img.height / window.innerHeight;
-        const sx = Math.max(0, rect.left * scaleX);
-        const sy = Math.max(0, rect.top * scaleY);
-        const sw = Math.min(img.width - sx, rect.width * scaleX);
-        const sh = Math.min(img.height - sy, rect.height * scaleY);
-
-        if (sw > 2 && sh > 2) {
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(sw); canvas.height = Math.round(sh);
-          canvas.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-          triggerDownload(canvas.toDataURL("image/png"), tear);
-          showToast("PNG downloaded ✓", "success");
-          return;
-        }
+        dataUrl = resp.dataUrl;
+      } else {
+        throw new Error(resp?.error || "capture returned no data");
       }
-    } catch {}
-
-    // Strategy 2: html2canvas from local extension file (no CDN, no CSP issue)
-    try {
-      await loadLocalHtml2Canvas();
-      const h2c = window.html2canvas;
-      if (!h2c) throw new Error("html2canvas not loaded");
-
-      const target = tear.mode === "safe"
-        ? (tear.safeClone?.cloneNode(true) || tear.element.cloneNode(true))
-        : tear.element.cloneNode(true);
-
-      const stage = document.createElement("div");
-      Object.assign(stage.style, {
-        position: "fixed", left: "-9999px", top: "0",
-        visibility: "hidden", pointerEvents: "none",
-        width: `${rect.width}px`,
-      });
-      try { target.style.visibility = "visible"; target.style.display = ""; } catch {}
-      stage.appendChild(target);
-      document.body.appendChild(stage);
-
-      const canvas = await h2c(target, {
-        useCORS: true, allowTaint: true, logging: false,
-        scale: window.devicePixelRatio || 1, backgroundColor: null,
-      });
-      document.body.removeChild(stage);
-      triggerDownload(canvas.toDataURL("image/png"), tear);
-      showToast("PNG downloaded ✓", "success");
     } catch (err) {
-      showToast(`PNG failed: ${err?.message || "unknown"}`, "error");
+      undoShow();
+      // If context died between our check and the actual send, fall back
+      const dead = !_runtimeAlive() ||
+        (err?.message || "").toLowerCase().includes("invalidated") ||
+        (err?.message || "").toLowerCase().includes("receiving end");
+      if (dead) {
+        showToast("Extension reloaded — using canvas fallback", "warn");
+        await _canvasFallbackPng(tear);
+      } else {
+        showToast(`PNG failed: ${err.message}`, "error");
+      }
+      return;
+    }
+
+    // ── Step 4: put element back where it was ────────────────────────────────
+    undoShow();
+
+    // ── Step 5: crop the screenshot to the element rect ──────────────────────
+    try {
+      const img = await loadImage(dataUrl);
+
+      const sx = Math.round(liveRect.left   * dpr);
+      const sy = Math.round(liveRect.top    * dpr);
+      const sw = Math.round(liveRect.width  * dpr);
+      const sh = Math.round(liveRect.height * dpr);
+
+      const csx = Math.max(0, Math.min(sx, img.naturalWidth));
+      const csy = Math.max(0, Math.min(sy, img.naturalHeight));
+      const csw = Math.min(sw, img.naturalWidth  - csx);
+      const csh = Math.min(sh, img.naturalHeight - csy);
+
+      if (csw <= 0 || csh <= 0) {
+        showToast("Element outside viewport — scroll it into view first", "warn");
+        return;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width  = csw;
+      canvas.height = csh;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, csx, csy, csw, csh, 0, 0, csw, csh);
+
+      triggerDownload(canvas.toDataURL("image/png"), tear);
+      showToast(`PNG downloaded ✓ (${csw}×${csh}px @${dpr}x)`, "success");
+    } catch (err) {
+      showToast(`PNG crop failed: ${err.message}`, "error");
     }
   }
 
+  /** Load a data/blob URL into an HTMLImageElement */
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to load screenshot image"));
+      img.src = src;
+    });
+  }
+
   function triggerDownload(dataUrl, tear) {
-    const safe = String(tear.label||"tearaway").toLowerCase()
-      .replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
+    const safe = String(tear.label || "tearaway")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "element";
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = `tearaway-${safe}-${tear.id}.png`;
     document.documentElement.appendChild(a);
-    a.click(); a.remove();
-  }
-
-  function loadLocalHtml2Canvas() {
-    if (window.html2canvas) return Promise.resolve();
-    if (window._h2cLoading) return window._h2cLoading;
-    window._h2cLoading = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      // Use chrome.runtime.getURL to load the bundled file — bypasses page CSP
-      script.src = chrome.runtime.getURL("lib/html2canvas.min.js");
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("html2canvas load failed"));
-      document.head.appendChild(script);
-    });
-    return window._h2cLoading;
+    a.click();
+    a.remove();
   }
 
   // ─── drag ghost ──────────────────────────────────────────────────────────
@@ -674,8 +934,8 @@
     ghost.style.top  = `${STATE.dragStart.elTop  + cy - STATE.dragStart.y}px`;
   }
 
-  const dragDist = (x,y) => STATE.dragStart ? Math.hypot(x-STATE.dragStart.x, y-STATE.dragStart.y) : 0;
-  const offPage  = (x,y) => x<0||y<0||x>window.innerWidth||y>window.innerHeight;
+  const dragDist = (x, y) => STATE.dragStart ? Math.hypot(x - STATE.dragStart.x, y - STATE.dragStart.y) : 0;
+  const offPage  = (x, y) => x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
 
   // ─── events ──────────────────────────────────────────────────────────────
   document.addEventListener("keydown", e => {
