@@ -37,35 +37,17 @@ Available actions:
 - **PNG**: download a cropped PNG (see below)
 - **Selector**: copies a CSS selector for the original element
 - **HTML**: copies `outerHTML`
-## PNG export
-PNG capture uses two paths depending on the state of the extension context:
-**Primary — `captureVisibleTab` + crop**
-The background service worker takes a full GPU screenshot of the tab via `chrome.tabs.captureVisibleTab`, then the content script crops it to the element's bounding rect. This captures exactly what you see — CORS images, canvas, video, CSS variables, everything — at full device pixel ratio.
-**Fallback — canvas painter**
-If the extension context has been invalidated (e.g. you reloaded the extension from `chrome://extensions` without reloading the tab), the primary path is unavailable. TearAway automatically falls back to a pure in-page canvas renderer that walks the element's subtree and paints backgrounds, borders, border-radius, and text directly onto a canvas using `getComputedStyle`. No `chrome.*` APIs are used. Cross-origin images are skipped to avoid canvas taint; everything else renders correctly.
-> **Note:** If you reload the extension during development, reload the target tab too to restore the primary (GPU screenshot) path.
+
 ## How it works (v0.3)
-- A content script adds:
-  - an Alt-mode picker + highlight overlay
-  - a placeholder left behind on the page
-  - a multi-tear tray for fast actions
-- If supported, the widget opens in a Document PiP window and receives:
-  - copied document styles
-  - your selected element (live move) or a clone (safe mode)
-- The background service worker handles:
-  - `captureVisibleTab` for GPU-accurate PNG export
-  - clipboard writes that bypass page CSP restrictions
-## Limitations (current)
-- PNG fallback (canvas painter) does not capture background images or gradients — only solid colors, borders, and text.
-- Some sites may restrict PiP behavior.
-- SVG export is a planned next step.
-## Roadmap
-- [ ] **TearOS** — Electron shell for true desktop widgets + multi-tear dashboard
-- [ ] Tear export upgrades (SVG where possible, drag-and-drop to design tools)
-- [ ] Session persistence (history of torn widgets)
-- [ ] Framework-aware "live move vs safe clone" heuristics
-- [ ] TabOS / sync layer to share tear sessions across devices
-- [ ] iframe + shadow-DOM aware picking
-- [ ] Firefox / Safari shims
+
+Content script adds picker, highlight overlay, placeholder & tray
+Opens Document PiP window with copied styles + live element or clone
+Background service worker handles screenshots & clipboard
+
+### Limitations (Current)
+
+PNG fallback does not capture background images or gradients
+Some sites may restrict PiP behavior
+SVG export is planned
 ## License
 MIT.
