@@ -3,13 +3,11 @@
   if (window.__tearawayLoaded) return;
   window.__tearawayLoaded = true;
 
-  // ─── constants ────────────────────────────────────────────────────────────
   const MIN_DRAG_PX = 40;
   const IGNORE_TAGS = new Set([
     "HTML","BODY","HEAD","SCRIPT","STYLE","LINK","META","NOSCRIPT","svg","path"
   ]);
 
-  // ─── state ────────────────────────────────────────────────────────────────
   const STATE = {
     altHeld: false,
     pickMode: false,
@@ -23,13 +21,11 @@
     tornElements: new WeakSet(),
   };
 
-  // ─── overlay nodes ────────────────────────────────────────────────────────
   let overlayRoot = null;
   let highlightBox = null;
   let hud = null;
   let ghost = null;
 
-  // ─── helpers ──────────────────────────────────────────────────────────────
   const supportsDocPiP = () => "documentPictureInPicture" in window;
 
   function isEditable(el) {
@@ -114,7 +110,6 @@
     );
   }
 
-  // ─── overlay ─────────────────────────────────────────────────────────────
   function ensureOverlay() {
     if (overlayRoot?.isConnected) return;
     overlayRoot = document.createElement("div");
@@ -149,7 +144,6 @@
     });
   }
 
-  // ─── toast ───────────────────────────────────────────────────────────────
   const _toastStack = [];
   function showToast(msg, type = "info") {
     ensureOverlay();
@@ -170,7 +164,6 @@
     _toastStack.forEach((t, i) => { t.style.bottom = `${20 + i * 46}px`; });
   }
 
-  // ─── pick mode ───────────────────────────────────────────────────────────
   function enterPickMode() {
     if (STATE.pickMode) return;
     STATE.pickMode = true;
@@ -191,7 +184,6 @@
     STATE.pickMode ? exitPickMode() : enterPickMode();
   }
 
-  // ─── style copying ───────────────────────────────────────────────────────
   function copyStylesInto(doc) {
     [...document.styleSheets].forEach(sheet => {
       try {
@@ -284,7 +276,6 @@
     return body;
   }
 
-  // ─── fallback panel ──────────────────────────────────────────────────────
   function createFallbackPanel(tear) {
     const { element, label, mode, id, capture, safeClone } = tear;
     const { rect } = capture;
@@ -390,7 +381,6 @@
     } catch {}
   }
 
-  // ─── tear ─────────────────────────────────────────────────────────────────
   async function tearElement(element, mode) {
     if (!element) return;
     if (STATE.tornElements.has(element)) {
@@ -466,7 +456,6 @@
     }
   }
 
-  // ─── restore ─────────────────────────────────────────────────────────────
   function restoreTear(tearId) {
     const tear = STATE.tearsById.get(String(tearId));
     if (!tear) return;
@@ -499,21 +488,15 @@
     if (ids.length) restoreTear(ids[ids.length - 1]);
   }
 
-  // ─── clipboard ────────────────────────────────────────────────────────────
   async function writeClipboard(text) {
-    // Strategy 1: relay through background.js (most reliable — works everywhere)
     try {
       const resp = await chrome.runtime.sendMessage({ type: "TEARAWAY_CLIPBOARD_WRITE", text });
       if (resp?.ok) return true;
     } catch {}
-
-    // Strategy 2: native clipboard API (works on focused https:// pages)
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {}
-
-    // Strategy 3: textarea execCommand (deprecated but last resort)
     try {
       const ta = document.createElement("textarea");
       ta.value = text;
@@ -547,36 +530,9 @@
     });
   }
 
-  // ─── PNG download ────────────────────────────────────────────────────────
-  //
-  // PRIMARY PATH — captureVisibleTab + crop:
-  //   background.js captures the live GPU frame via chrome.tabs.captureVisibleTab,
-  //   we crop to the element rect. Perfect pixels, handles CORS/video/canvas.
-  //
-  // FALLBACK PATH — manual canvas painter (zero extension APIs):
-  //   Used when chrome.runtime is gone (extension reloaded while tab is open).
-  //   We walk the element's box tree and paint each node onto an OffscreenCanvas
-  //   using only 2D canvas primitives — no XMLSerializer, no DOM serialisation,
-  //   no chrome.* calls at all. Handles backgrounds, borders, border-radius,
-  //   text, and nested children. Cross-origin images are skipped (blank).
-  //
-  // WHY NOT XMLSerializer / foreignObject:
-  //   Chrome's XMLSerializer internally calls chrome.runtime.getURL() to resolve
-  //   extension-origin resource references embedded in the DOM. When the context
-  //   is invalidated chrome.runtime is undefined → "Cannot read properties of
-  //   undefined (reading 'getURL')". This crash happens before we even draw
-  //   anything, so there is no safe way to use XMLSerializer in this scenario.
-  //
-
-  /** True when chrome.runtime is alive and usable */
   function _runtimeAlive() {
     try { return !!(chrome?.runtime?.id); } catch { return false; }
   }
-
-  /**
-   * Temporarily move the element into the visible page DOM so
-   * captureVisibleTab can see it. Returns an async undo function.
-   */
   function _showForCapture(tear) {
     const { element, mode, placeholder, exportDisplayRestore, pipWindow } = tear;
     let undo = () => {};
@@ -598,13 +554,6 @@
     }
     return undo;
   }
-
-  /**
-   * Pure-canvas fallback PNG export.
-   * Walks the element's subtree, reads getComputedStyle() for each node,
-   * and paints backgrounds / borders / text onto a canvas.
-   * Never touches chrome.* or XMLSerializer.
-   */
   async function _canvasFallbackPng(tear) {
     showToast("Using canvas fallback…", "info");
     const { element, mode, exportDisplayRestore } = tear;
@@ -630,8 +579,6 @@
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
 
-    // Fill with the nearest opaque ancestor background so we don't get
-    // a transparent (looks white) canvas
     const pageBg = (() => {
       let el = element.parentElement;
       while (el && el !== document.documentElement) {
@@ -644,7 +591,6 @@
     ctx.fillStyle = pageBg;
     ctx.fillRect(0, 0, w, h);
 
-    // ── Recursive painter ─────────────────────────────────────────────────
     function paintNode(node) {
       if (!(node instanceof Element)) return;
       const r   = node.getBoundingClientRect();
@@ -656,8 +602,6 @@
       if (nw <= 0 || nh <= 0) return;
 
       ctx.save();
-
-      // Border-radius clip
       const radii = [
         parseFloat(cs.borderTopLeftRadius)     || 0,
         parseFloat(cs.borderTopRightRadius)    || 0,
@@ -691,8 +635,7 @@
       const bgImg = cs.backgroundImage;
       if (bgImg && bgImg !== "none" && !bgImg.startsWith("url(")) {
         try {
-          // linear-gradient / radial-gradient — create a temporary element
-          // and read it back as a canvas fill (limited but covers common cases)
+
           const tmp = document.createElement("canvas");
           tmp.width = Math.round(nw); tmp.height = Math.round(nh);
           const tmpCtx = tmp.getContext("2d");
@@ -700,7 +643,6 @@
           tmpEl.style.cssText = `position:fixed;left:-9999px;top:0;width:${nw}px;height:${nh}px;background:${bgImg}`;
           document.documentElement.appendChild(tmpEl);
           // We can't actually read pixels from a DOM element directly,
-          // but we can at least not crash. Skip for now.
           tmpEl.remove();
         } catch {}
       }
@@ -804,7 +746,6 @@
     const tear = STATE.tearsById.get(String(tearId));
     if (!tear) return;
 
-    // ── Fast path: extension context is gone — go straight to canvas fallback
     if (!_runtimeAlive()) {
       showToast("Extension reloaded — using canvas fallback", "warn");
       await _canvasFallbackPng(tear);
@@ -812,16 +753,12 @@
     }
 
     showToast("Capturing…", "info");
-
-    // ── Step 1: make element visible in the page for the screenshot ──────────
     const undoShow = _showForCapture(tear);
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    // ── Step 2: fresh bounding rect ──────────────────────────────────────────
     const liveRect = tear.element.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
 
-    // ── Step 3: captureVisibleTab via background ──────────────────────────────
     let dataUrl = null;
     try {
       const resp = await chrome.runtime.sendMessage({ type: "TEARAWAY_CAPTURE_TAB" });
@@ -845,10 +782,7 @@
       return;
     }
 
-    // ── Step 4: put element back where it was ────────────────────────────────
     undoShow();
-
-    // ── Step 5: crop the screenshot to the element rect ──────────────────────
     try {
       const img = await loadImage(dataUrl);
 
@@ -904,8 +838,6 @@
     a.click();
     a.remove();
   }
-
-  // ─── drag ghost ──────────────────────────────────────────────────────────
   function removeGhost() { if (ghost) { ghost.remove(); ghost = null; } }
 
   function startGhost(el) {
@@ -936,8 +868,6 @@
 
   const dragDist = (x, y) => STATE.dragStart ? Math.hypot(x - STATE.dragStart.x, y - STATE.dragStart.y) : 0;
   const offPage  = (x, y) => x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
-
-  // ─── events ──────────────────────────────────────────────────────────────
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       if (e.shiftKey) { restoreAll(); return; }
@@ -1008,8 +938,6 @@
   }, true);
 
   window.addEventListener("resize", () => { if (STATE.hoveredEl) updateHighlight(STATE.hoveredEl); });
-
-  // ─── public API (used by popup) ───────────────────────────────────────────
   window.__tearaway = {
     restoreAll, restoreLast, togglePickMode,
     getCount: () => STATE.tearsById.size,

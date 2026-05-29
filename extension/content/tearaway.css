@@ -5,7 +5,6 @@
   z-index: 2147483640;
 }
 
-/* ── highlight ─────────────────────────────────────────────────────────── */
 .ta-highlight {
   position: fixed;
   pointer-events: none;
@@ -28,7 +27,6 @@
 .ta-highlight::before { top: -2px; left: -2px; border-width: 2px 0 0 2px; border-radius: 1px 0 0 0; }
 .ta-highlight::after  { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; border-radius: 0 0 1px 0; }
 
-/* ── HUD ───────────────────────────────────────────────────────────────── */
 .ta-hud {
   position: fixed;
   top: 14px;
@@ -62,7 +60,6 @@
   letter-spacing: 0.05em;
 }
 
-/* ── ghost ─────────────────────────────────────────────────────────────── */
 .ta-ghost {
   position: fixed;
   pointer-events: none;
@@ -93,7 +90,6 @@
   pointer-events: none;
 }
 
-/* ── toasts ────────────────────────────────────────────────────────────── */
 .ta-toast {
   position: fixed;
   right: 18px;

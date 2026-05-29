@@ -1,5 +1,4 @@
 (() => {
-  // ── Clocks ────────────────────────────────────────────────────────────────
   const headerClock = document.getElementById("clock");
   const bigClock = document.getElementById("big-clock");
   const bigDate = document.getElementById("big-date");
@@ -18,7 +17,6 @@
   tick();
   setInterval(tick, 250);
 
-  // ── Stock Ticker ──────────────────────────────────────────────────────────
   const ticker = document.getElementById("ticker");
   const symbols = [
     { s: "NVDA", p: 892.1,  d: 1.2 },
@@ -51,7 +49,6 @@
   renderTicker();
   setInterval(renderTicker, 1200);
 
-  // ── Metrics ───────────────────────────────────────────────────────────────
   const metricsEl = document.getElementById("metrics");
   const metricData = [
     { label: "DAU",    value: 24810, unit: "",   delta: 3.2,  up: true },
